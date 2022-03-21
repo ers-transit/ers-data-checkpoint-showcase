@@ -15,22 +15,15 @@ class Data:
 	'''
 	def __init__(self, filepath, **kwargs):
 		# Load all relevant arguments that have been provided, set to defaults if not. 
-		self.filepath = filepath
 		self.sci_ext = kwargs.get('sci_ext', 'SCI')
 		self.err_ext = kwargs.get('err_ext', 'ERR')
 		self.suffix = kwargs.get('suffix', 'calints.fits')
 		self.x_ax = kwargs.get('x_ax', 2)
 		self.y_ax = kwargs.get('y_ax', 1)
 		self.t_ax = kwargs.get('t_ax', 0)
-		self.names = kwargs.get('names', None)
 
 		# Load the data 
-		if isinstance(filepath, list):
-			self.load_multi(filepath, self.suffix, self.x_ax, self.y_ax, self.t_ax)
-			self.multi = True
-		else:
-			self.load_data(filepath, self.sci_ext, self.err_ext, self.suffix, self.x_ax, self.y_ax, self.t_ax)
-			self.multi = False
+		self.load_data(filepath, self.sci_ext, self.err_ext, self.suffix, self.x_ax, self.y_ax, self.t_ax)
 
 		# Load a seed image if possible 
 		# if (self.instrument == 'NIRCAM') or (self.instrument == 'MIRI'):
@@ -45,6 +38,7 @@ class Data:
 		'''
 		Function to load JWST pipeline Stage 2 equivalent data (e.g. calints.fits files)
 		'''
+
 		# Check if filepath is a directory, or a file
 		if os.path.isdir(filepath):
 			all_files = sorted(glob.glob(filepath+'*'+suffix))
@@ -88,12 +82,12 @@ class Data:
 		# We can't use all the integrations (it would take too long), 
 		# so pick out specific ones depending on the dataset. 
 		if self.instrument == 'NIRCAM':
-			self.use_ints = [0,20,32,47,-1]
+			self.use_ints = [1,20,32,47,-1]
 			plot_aspect = 10
 			vl, vh = 0.01, 0.6
 			self.px, self.py = 1024, 32
 		elif self.instrument == 'NIRISS':
-			self.use_ints = [0,2,3,4,-1]
+			self.use_ints = [1,2,3,4,-1]
 			plot_aspect=2
 			vl, vh = 0.001, 0.05
 			self.px, self.py = 1600, 30
@@ -106,7 +100,7 @@ class Data:
 			self.use_ints = [1,2,3,4,-1]
 			plot_aspect=2
 			vl, vh = 0.01, 0.6
-			self.px, self.py = 220,37
+			self.px, self.py = 37, 220
 		else:
 			raise ValueError('Instrument:{} not recognised!'.format(self.instrument))
 
@@ -132,94 +126,6 @@ class Data:
 
 		return
 
-	def load_multi(self, filepaths, suffix='.fits', x_axs=2, y_axs=1, t_axs=0):
-
-		for i, filepath in enumerate(filepaths):
-
-			x_ax, y_ax, t_ax = x_axs[i], y_axs[i], t_axs[i]
-
-			# Check if filepath is a directory, or a file
-			if os.path.isdir(filepath):
-				all_files = sorted(glob.glob(filepath+'*'+suffix))
-			elif os.path.isfile(filepath):
-				all_files = [filepath]
-			else:
-				raise ValueError('File path not recognised as a file or directory.')
-
-			# Raise error if no files found.
-			if not all_files:
-				raise ValueError('No files found at provided filepath!')
-
-			# Loop over provided files
-			for j, file in enumerate(all_files):
-				# Open FITS file
-				with fits.open(file) as hdul:
-					# Read in science and error data using default / provided extensions. 
-					sci = hdul['SCI'].data
-					err = hdul['ERR'].data
-
-					if (x_ax != 2) or (y_ax != 1) or (t_ax != 0):
-						sci = np.transpose(sci, axes=(t_ax, y_ax, x_ax))
-						err = np.transpose(err, axes=(t_ax, y_ax, x_ax))
-
-					if j == 0:
-						# If this is the first file, want info
-						# Take fist slice
-						sp = sci
-
-						sci = sci[0,:,:]
-						err = err[0,:,:]
-
-						# Translate to 3c
-						sci = sci[None,:,:]
-						err = err[None,:,:]
-						if i == 0:
-							# If this is the first filepath, let's initialise some arrays to start
-							# saving data into 
-							all_sci = sci
-							all_err = err
-
-							#Also, let's take this moment to get other information from the headers
-							phead = hdul[0].header
-							self.instrument = phead['INSTRUME'].upper()
-
-							if self.instrument == 'NIRCAM':
-								self.px, self.py = 1024, 32
-							elif self.instrument == 'NIRISS':
-								self.px, self.py = 1600, 30
-							elif self.instrument == 'NIRSPEC':
-								self.px, self.py = 256, 16
-							elif self.instrument == 'MIRI':
-								self.px, self.py = 220,37
-						else:
-							# Append data to the existing arrays (probably a smarter way to do this)
-							all_sci = np.append(all_sci, sci, axis=t_ax)
-							all_err = np.append(all_err, err, axis=t_ax)
-					else:
-						# Want to keep going through files for single pixel information
-						sp = np.append(sp, sci, axis=t_ax)
-
-			if i == 0:
-				#Initialise array for single pixel
-				sing_pix = sp[:,self.py,self.px]
-				self.single_pixel = [sing_pix.tolist()] #Cast as 2d
-			else:
-				sing_pix = sp[:,self.py,self.px]
-				self.single_pixel.append(sing_pix.tolist())
-
-		self.sci = all_sci
-		self.err = all_err
-
-		# Explicitly free the memory being used to hold all of the data.
-		# This might not be necessary, but who knows.
-		del all_sci
-		del all_err
-
-		self.use_ints = range(self.sci.shape[0])
-
-		return
-
-
 	def basic_properties(self):
 		# Function to calculate a range of basic properties for the images. 
 
@@ -234,56 +140,33 @@ class Data:
 
 		return
 
-	def seed_comparison(self, seed_dir, seed_suffix='calints.fits'):
+	def seed_comparison(self):
 		# Function to calculate comparisons to the seed images. 
 
 		# Can only do this for NIRCam and NIRISS
 		if (self.instrument == 'NIRSPEC') or (self.instrument == 'MIRI'):
 			print('There is no seed image for {}, skipping this step!'.format(self.instrument))
 		else:
-			# We are using NIRCam or NIRISS, load a seed image
-			self.load_seed(seed_dir, seed_suffix)
+			# We are using NIRCam or NIRISS
+			seed_image = load_seed()
 
 			# Now subtract the seed image from the science images
-			plt.figure(figsize=[24,6])
-			plt.imshow(np.flip(self.seed_image, axis=1))
-			plt.show()
-			plt.figure(figsize=[24,6])
-			plt.imshow(self.sci[0,:,:])
-			plt.show()
-			subtracted = self.sci[0,:,:] - np.flip(self.seed_image, axis=1) 
-			plt.figure(figsize=[24,6])
-			plt.imshow(subtracted)
-			subtracted_3d = subtracted[None,:,:]
+			subtracted = self.sci - seed_image
 
 			# Now run the functions from basic_properties again
 			# Plot some profiles of the dispersion/cross-dispersion axes
-			self.profiles(subtracted_3d)
+			self.profiles(self.sci)
 
 			# Make some plots based on the image pixels
-			self.pixelplots(subtracted_3d)
+			self.pixelplots(self.sci)
 
 			# Get some simple quantitative measures from the images
-			self.quantitatives(subtracted_3d)
+			self.quantitatives(self.sci)
 
 		return
 
-	def load_seed(self, seed_dir, seed_suffix):
+	def load_seed(self):
 		# Function to load the seed image in as part of the class.
-
-		# Use the instrument to identify files
-		if self.instrument == 'NIRCAM':
-			search = 'NRC*'+seed_suffix
-		elif self.instrument == 'NIRISS':
-			search = '*SOSS*'+seed_suffix
-
-		seed_files = sorted(glob.glob(seed_dir+search))
-		
-		for sf in seed_files:
-			with fits.open(sf) as hdul:
-				# For NIRCam we only have the first 105 integrations, only use the first one for comparison
-				if self.instrument == 'NIRCAM':
-					self.seed_image = hdul['SCI'].data[0,:,:]
 
 		return
 
@@ -299,12 +182,8 @@ class Data:
 			disp = np.nansum(image, axis=0)
 			xdisp = np.nansum(image, axis=1)
 
-			if not self.multi:
-				axs[0].plot(range(len(disp)), disp, label='Integration {}'.format(self.use_ints[i]))
-				axs[1].plot(range(len(xdisp)), xdisp, label='Integration {}'.format(self.use_ints[i]))
-			else:
-				axs[0].plot(range(len(disp)), disp, label='{}'.format(self.names[i]))
-				axs[1].plot(range(len(xdisp)), xdisp, label='{}'.format(self.names[i]))
+			axs[0].plot(range(len(disp)), disp, label='Integration {}'.format(self.use_ints[i]))
+			axs[1].plot(range(len(xdisp)), xdisp, label='Integration {}'.format(self.use_ints[i]))
 
 		plt.subplots_adjust(wspace=0.1)
 		for ax in axs:
@@ -312,10 +191,6 @@ class Data:
 			ax.tick_params(axis='both', labelsize=18)
 			ax.set_xlabel('Pixels', fontsize=20)
 			ax.legend(prop={'size': 16})
-
-		if self.instrument == 'NIRCAM':
-			axs[0].set_xlim(0,1800)
-			axs[0].set_ylim(0, 1500)
 
 		axs[0].set_ylabel('Counts', fontsize=20)
 		plt.show()
@@ -334,17 +209,10 @@ class Data:
 
 			bins = np.logspace(np.log10(1e-3), np.log10(np.nanmax(image_1d)), 100)
 
-			if not self.multi:
-				axs[0].hist(image_1d, bins=bins, histtype='step', label='Integration {}'.format(self.use_ints[i]))
-			else:
-				axs[0].hist(image_1d, bins=bins, histtype='step', label='{}'.format(self.names[i]))
+			axs[0].hist(image_1d, bins=bins, histtype='step', label='Integration {}'.format(self.use_ints[i]))
 
 		#Use the single pixel data from the load_data function to plot it's flux over time
-		if not self.multi:
-			axs[1].plot(range(len(self.single_pixel)), self.single_pixel)
-		else:
-			for sp in self.single_pixel:
-				axs[1].plot(range(len(sp)), sp, label='{}'.format(self.names[i]))
+		axs[1].plot(range(len(self.single_pixel)), self.single_pixel)
 
 		axs[0].legend(prop={'size': 16})
 		axs[0].set_xscale('log')
@@ -356,13 +224,6 @@ class Data:
 
 		for ax in axs:
 			ax.tick_params(axis='both', labelsize=18)
-
-		if self.instrument == 'NIRSpec':
-			axs[0].set_xlim(1,1e3)
-		if self.instrument == 'MIRI':
-			axs[0].set_xlim(1e0,1e3)
-		if self.instrument == 'NIRCAM':
-			axs[0].set_xlim(1e-3,1e3)
 
 		plt.show()
 
@@ -384,10 +245,7 @@ class Data:
 			stds[i] = np.nanstd(image)
 
 		# Print things out for people to see
-		if not self.multi:
-			print('Integration #\'s: ', self.use_ints)
-		else:
-			print('Reductions: ', self.names)
+		print('Integration #\'s: ', self.use_ints)
 		print('Mean Values: ',means)
 		print('Median Values: ',medians)
 		print('Min Values: ',vmins)
