@@ -109,7 +109,7 @@ def write_example_file(
     depth_uncertainties = np.linspace(0.001, 0.003, N)
 
     # create some fake depths
-    depth = np.random.normal(0.1, depth_uncertainties)
+    depth = np.random.normal(0.02, depth_uncertainties)
     columns["depth"] = depth
     columns["uncertainty"] = depth_uncertainties
 
@@ -118,3 +118,5 @@ def write_example_file(
 
     # write out this table
     t.write(filename, format="ascii.ecsv", overwrite=True)
+
+
